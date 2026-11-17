@@ -1,0 +1,718 @@
+---
+openapi: 3.0.3
+info:
+  title: AI Engineer — API лабораторной №4
+  version: 0.2.0
+  description: Контракт регистрации, сессии и ролевого доступа для варианта 3. Редакция
+    от 2026-11-17.
+servers:
+- url: "/api"
+paths:
+  "/register":
+    post:
+      tags:
+      - Сессия
+      summary: Создать аккаунт Оператора и открыть сессию
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/RegisterRequest"
+            example:
+              login: pilot_04
+              password: Workshop!42
+      responses:
+        '201':
+          description: Аккаунт создан. Новая сессия заменяет текущую.
+          headers:
+            Set-Cookie:
+              "$ref": "#/components/headers/SessionCookie"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RegistrationResult"
+              example:
+                message: Аккаунт создан.
+                user:
+                  id: 8cb82229-7760-4c98-a52c-fd8eaaf9cc04
+                  login: pilot_04
+                  roles:
+                  - operator
+                  permissions:
+                  - runs:read
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '409':
+          description: Логин уже занят, независимо от регистра букв.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+              example:
+                code: LOGIN_TAKEN
+                message: Этот логин уже занят.
+                fields:
+                  login: Этот логин уже занят.
+        '422':
+          "$ref": "#/components/responses/ValidationFailed"
+        '500':
+          "$ref": "#/components/responses/InternalError"
+  "/auth/login":
+    post:
+      tags:
+      - Сессия
+      summary: Войти по логину и паролю
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/LoginRequest"
+      responses:
+        '200':
+          "$ref": "#/components/responses/SessionOpened"
+        '401':
+          description: Неверный логин или пароль. Ответ одинаков для обеих причин.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+              example:
+                code: INVALID_CREDENTIALS
+                message: Неверный логин или пароль.
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '422':
+          "$ref": "#/components/responses/ValidationFailed"
+        '500':
+          "$ref": "#/components/responses/InternalError"
+  "/auth/demo":
+    post:
+      tags:
+      - Сессия
+      summary: Открыть кабинет предустановленного профиля на учебном стенде
+      description: Доступен при APP_ENV=development или APP_ENV=test и DEMO_AUTH_ENABLED=true.
+        DEMO_AUTH_ENABLED по умолчанию false. Выключенный маршрут возвращает 404.
+        При включённом маршруте неизвестный код профиля возвращает 422. Вход открывает
+        сессию существующего профиля с его текущими ролями. Начальные роли задаются
+        при загрузке демоданных. Повторный вход сохраняет их изменения.
+      operationId: openDemoSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - profile
+              properties:
+                profile:
+                  type: string
+                  enum:
+                  - operator_01
+                  - diagnostics_01
+                  - architect_01
+                  - student
+            example:
+              profile: diagnostics_01
+      responses:
+        '200':
+          "$ref": "#/components/responses/SessionOpened"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '422':
+          "$ref": "#/components/responses/ValidationFailed"
+        '500':
+          "$ref": "#/components/responses/InternalError"
+  "/auth/logout":
+    post:
+      tags:
+      - Сессия
+      summary: Закрыть текущую сессию
+      operationId: logout
+      responses:
+        '204':
+          description: Сессия отозвана, cookie удалена. Без активной сессии ответ
+            также 204.
+          headers:
+            Set-Cookie:
+              description: Удаляет cookie сессии с тем же Path.
+              schema:
+                type: string
+              example: ai_engineer_session=; Path=/api; Max-Age=0; HttpOnly; SameSite=Lax
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/InternalError"
+  "/me":
+    get:
+      tags:
+      - Сессия
+      summary: Получить текущий профиль, роли и права
+      operationId: getCurrentUser
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Текущий пользователь с актуальными ролями и правами.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/User"
+              examples:
+                operator:
+                  "$ref": "#/components/examples/Operator"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '500':
+          "$ref": "#/components/responses/InternalError"
+  "/roles":
+    get:
+      tags:
+      - Роли
+      summary: Получить роли и матрицу прав
+      operationId: listRoles
+      responses:
+        '200':
+          description: Каталог ролей доступен до входа.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/Role"
+              example:
+              - id: operator
+                label: Оператор
+                description: Читает протоколы испытаний робота.
+                permissions:
+                - runs:read
+              - id: diagnostician
+                label: Диагност
+                description: Читает протоколы и принимает их или возвращает на доработку.
+                permissions:
+                - runs:read
+                - runs:review
+              - id: architect
+                label: Архитектор
+                description: Проверяет протоколы и назначает роли участникам стенда.
+                permissions:
+                - runs:read
+                - runs:review
+                - roles:manage
+        '500':
+          "$ref": "#/components/responses/InternalError"
+  "/users":
+    get:
+      tags:
+      - Роли
+      summary: Получить список участников
+      description: Требуется право roles:manage.
+      operationId: listUsers
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Участники и их актуальные роли. Пустой список возвращается
+            как [].
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/User"
+              example:
+              - id: 8cb82229-7760-4c98-a52c-fd8eaaf9cc04
+                login: pilot_04
+                roles:
+                - operator
+                permissions:
+                - runs:read
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/InternalError"
+  "/users/{userId}/roles":
+    put:
+      tags:
+      - Роли
+      summary: Заменить назначенные участнику роли
+      description: Требуется право roles:manage. Переданный массив полностью заменяет
+        предыдущий набор ролей любого участника, включая демопрофили. Новый набор
+        действует в уже открытых сессиях.
+      operationId: setUserRoles
+      security:
+      - sessionCookie: []
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - roles
+              properties:
+                roles:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items:
+                    "$ref": "#/components/schemas/RoleId"
+            example:
+              roles:
+              - operator
+              - diagnostician
+      responses:
+        '200':
+          description: Участник с обновлёнными ролями и правами.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/User"
+              example:
+                id: 8cb82229-7760-4c98-a52c-fd8eaaf9cc04
+                login: pilot_04
+                roles:
+                - operator
+                - diagnostician
+                permissions:
+                - runs:read
+                - runs:review
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '422':
+          description: Некорректный UUID или набор ролей.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '500':
+          "$ref": "#/components/responses/InternalError"
+  "/runs":
+    get:
+      tags:
+      - Протоколы
+      summary: Получить список протоколов испытаний
+      description: Требуется право runs:read.
+      operationId: listRuns
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Краткие сведения о протоколах по убыванию date, при равной
+            дате по убыванию id. Пустой список возвращается как [].
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/RunSummary"
+              example:
+              - id: AE-041
+                title: Реакция на курсор
+                robot: AI Engineer
+                date: '2026-11-04'
+                status: pending
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/InternalError"
+  "/runs/{runId}":
+    get:
+      tags:
+      - Протоколы
+      summary: Открыть протокол испытания
+      description: Требуется право runs:read.
+      operationId: getRun
+      security:
+      - sessionCookie: []
+      parameters:
+      - "$ref": "#/components/parameters/RunId"
+      responses:
+        '200':
+          "$ref": "#/components/responses/RunResult"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '500':
+          "$ref": "#/components/responses/InternalError"
+  "/runs/{runId}/review":
+    patch:
+      tags:
+      - Протоколы
+      summary: Принять протокол или вернуть его на доработку
+      description: Требуется право runs:review. Автор и время проверки определяются
+        на сервере. Решение можно изменить между approved и rejected. Повтор того
+        же статуса возвращает текущий протокол без обновления автора и времени. Сохранение
+        выполняется атомарно.
+      operationId: reviewRun
+      security:
+      - sessionCookie: []
+      parameters:
+      - "$ref": "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - status
+              properties:
+                status:
+                  type: string
+                  enum:
+                  - approved
+                  - rejected
+            example:
+              status: approved
+      responses:
+        '200':
+          "$ref": "#/components/responses/RunResult"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '404':
+          "$ref": "#/components/responses/NotFound"
+        '422':
+          "$ref": "#/components/responses/ValidationFailed"
+        '500':
+          "$ref": "#/components/responses/InternalError"
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: ai_engineer_session
+      description: Непрозрачный идентификатор серверной сессии.
+  headers:
+    SessionCookie:
+      description: Cookie с HttpOnly, SameSite=Lax, Path=/api и конечным сроком действия.
+        Secure обязателен при HTTPS.
+      schema:
+        type: string
+      example: ai_engineer_session=opaque-session-id; Path=/api; Max-Age=28800; HttpOnly;
+        SameSite=Lax; Secure
+  parameters:
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: AE-041
+  responses:
+    SessionOpened:
+      description: Создана новая сессия. Предыдущая сессия клиента отозвана.
+      headers:
+        Set-Cookie:
+          "$ref": "#/components/headers/SessionCookie"
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/User"
+          examples:
+            operator:
+              "$ref": "#/components/examples/Operator"
+            diagnostician:
+              value:
+                id: f62bbb8d-f795-45bf-9ac7-9c31ea66b335
+                login: diagnostics_01
+                roles:
+                - diagnostician
+                permissions:
+                - runs:read
+                - runs:review
+    RunResult:
+      description: Текущее состояние протокола.
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Run"
+          example:
+            id: AE-041
+            title: Реакция на курсор
+            robot: AI Engineer
+            date: '2026-11-04'
+            status: approved
+            summary: Проверена реакция робота рядом с полями формы.
+            reviewedBy: diagnostics_01
+            reviewedAt: '2026-11-17T10:20:00Z'
+    Unauthorized:
+      description: Активная сессия отсутствует или истекла.
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+          example:
+            code: AUTH_REQUIRED
+            message: Войдите на стенд.
+    Forbidden:
+      description: У пользователя нет нужного права либо источник изменяющего запроса
+        не разрешён.
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+          examples:
+            missingPermission:
+              value:
+                code: FORBIDDEN
+                message: Для назначения ролей нужна роль Архитектора.
+            invalidOrigin:
+              value:
+                code: ORIGIN_NOT_ALLOWED
+                message: Источник запроса не разрешён.
+    NotFound:
+      description: Запрошенный объект или маршрут отсутствует.
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+          example:
+            code: NOT_FOUND
+            message: Запрошенный объект не найден.
+    ValidationFailed:
+      description: Запрос не прошёл проверку. Ошибки полей передаются в fields.
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+          example:
+            code: VALIDATION_ERROR
+            message: Проверьте поля запроса.
+            fields:
+              password: Пароль не соответствует требованиям.
+    InternalError:
+      description: Внутренняя ошибка сервера.
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+          example:
+            code: INTERNAL_ERROR
+            message: Не удалось выполнить запрос. Повторите попытку позже.
+  examples:
+    Operator:
+      value:
+        id: 8cb82229-7760-4c98-a52c-fd8eaaf9cc04
+        login: pilot_04
+        roles:
+        - operator
+        permissions:
+        - runs:read
+  schemas:
+    LoginName:
+      type: string
+      minLength: 3
+      maxLength: 32
+      pattern: "^[A-Za-z0-9._-]+$"
+      description: Латиница, цифры, точка, дефис и подчёркивание. Для поиска и проверки
+        уникальности логин приводится к нижнему регистру.
+      example: pilot_04
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - login
+      - password
+      properties:
+        login:
+          "$ref": "#/components/schemas/LoginName"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          writeOnly: true
+          description: Минимум одна заглавная буква, одна строчная, одна цифра 0–9
+            и один символ из категорий Unicode P или S.
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - login
+      - password
+      properties:
+        login:
+          "$ref": "#/components/schemas/LoginName"
+        password:
+          type: string
+          format: password
+          minLength: 1
+          writeOnly: true
+    RegistrationResult:
+      type: object
+      required:
+      - message
+      - user
+      properties:
+        message:
+          type: string
+          example: Аккаунт создан.
+        user:
+          "$ref": "#/components/schemas/User"
+    User:
+      type: object
+      required:
+      - id
+      - login
+      - roles
+      - permissions
+      properties:
+        id:
+          type: string
+          format: uuid
+        login:
+          "$ref": "#/components/schemas/LoginName"
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            "$ref": "#/components/schemas/RoleId"
+        permissions:
+          type: array
+          uniqueItems: true
+          items:
+            "$ref": "#/components/schemas/Permission"
+      example:
+        id: 8cb82229-7760-4c98-a52c-fd8eaaf9cc04
+        login: pilot_04
+        roles:
+        - operator
+        permissions:
+        - runs:read
+    RoleId:
+      type: string
+      enum:
+      - operator
+      - diagnostician
+      - architect
+    Permission:
+      type: string
+      enum:
+      - runs:read
+      - runs:review
+      - roles:manage
+    Role:
+      type: object
+      required:
+      - id
+      - label
+      - description
+      - permissions
+      properties:
+        id:
+          "$ref": "#/components/schemas/RoleId"
+        label:
+          type: string
+          example: Диагност
+        description:
+          type: string
+          example: Читает и проверяет протоколы испытаний.
+        permissions:
+          type: array
+          uniqueItems: true
+          items:
+            "$ref": "#/components/schemas/Permission"
+    RunSummary:
+      type: object
+      required:
+      - id
+      - title
+      - robot
+      - date
+      - status
+      properties:
+        id:
+          type: string
+          example: AE-041
+        title:
+          type: string
+          example: Реакция на курсор
+        robot:
+          type: string
+          example: AI Engineer
+        date:
+          type: string
+          format: date
+          example: '2026-11-04'
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+    Run:
+      allOf:
+      - "$ref": "#/components/schemas/RunSummary"
+      - type: object
+        required:
+        - summary
+        - reviewedBy
+        - reviewedAt
+        properties:
+          summary:
+            type: string
+            example: Проверена реакция робота рядом с полями формы.
+          reviewedBy:
+            type: string
+            nullable: true
+            example: diagnostics_01
+          reviewedAt:
+            type: string
+            format: date-time
+            nullable: true
+            example: '2026-11-04T15:20:00Z'
+    Error:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+          enum:
+          - VALIDATION_ERROR
+          - LOGIN_TAKEN
+          - INVALID_CREDENTIALS
+          - AUTH_REQUIRED
+          - FORBIDDEN
+          - ORIGIN_NOT_ALLOWED
+          - NOT_FOUND
+          - INTERNAL_ERROR
+        message:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Сообщения по имени поля, если ошибка относится к конкретным
+            полям.
