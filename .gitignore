@@ -30,6 +30,9 @@ build/
 *.sqlite3
 data/
 
+# Local working notes
+/Docs/local/
+
 # Editor and operating system files
 .DS_Store
 .idea/
