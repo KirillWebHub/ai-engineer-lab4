@@ -1,0 +1,3 @@
+export function ArrowIcon() {
+  return <svg className="submit-arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
+}
