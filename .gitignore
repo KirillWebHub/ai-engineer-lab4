@@ -33,6 +33,11 @@ data/
 # Local working notes
 /Docs/local/
 
+# Local design prototypes
+/mockup/
+/mockup-3d/
+/robot-model/
+
 # Editor and operating system files
 .DS_Store
 .idea/
