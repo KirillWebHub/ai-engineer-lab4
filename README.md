@@ -38,7 +38,7 @@ npm run dev -- --host 127.0.0.1
 
 ![Frontend — библиотеки, 3D и инструменты](Docs/assets/frontend-architecture.png)
 
-[Открыть схему в полном размере](Docs/assets/frontend-architecture.png) · [Исходник в FigJam](https://www.figma.com/board/dgrrH7faRvqoUOb0qTpwOT?node-id=10-448)
+[Открыть схему в полном размере](Docs/assets/frontend-architecture.png) 
 
 ## Структура репозитория
 
