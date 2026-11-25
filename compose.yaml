@@ -8,7 +8,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-ai_engineer}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD before starting Compose}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      # 5433 на хосте, чтобы не конфликтовать с локальным PostgreSQL.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,35 +20,46 @@ services:
       start_period: 10s
 
   backend:
-    profiles: [app]
     build:
       context: ./backend
       dockerfile: Dockerfile
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
-      DATABASE_URL: "${DATABASE_URL:-}"
+      DATABASE_URL: "${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-ai_engineer}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ai_engineer}}"
       SECRET_KEY: "${SECRET_KEY:-}"
       APP_ENV: ${APP_ENV:-development}
       HASH_SCHEME: ${HASH_SCHEME:-argon2}
+      ARGON2_TIME_COST: ${ARGON2_TIME_COST:-3}
+      ARGON2_MEMORY_COST: ${ARGON2_MEMORY_COST:-65536}
+      ARGON2_PARALLELISM: ${ARGON2_PARALLELISM:-2}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-28800}
       DEMO_AUTH_ENABLED: ${DEMO_AUTH_ENABLED:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PORT: "8000"
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080,http://localhost:8000,http://127.0.0.1:8000}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/roles', timeout=2)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
 
   frontend:
-    profiles: [app]
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_MODE: http
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-8080}:80"
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   postgres_data:

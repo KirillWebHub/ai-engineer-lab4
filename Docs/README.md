@@ -2,7 +2,11 @@
 
 Лабораторная работа №4 по ПАСЗИ, вариант 3. Приложение с регистрацией пользователей и ролевым доступом к протоколам испытаний робота.
 
-Репозиторий объединяет frontend, backend и общий контракт API. Во frontend перенесены авторизация, демо-профили, кабинет с протоколами, проверкой испытаний и назначением ролей, а также 3D-робот. Приложение работает на моках без backend. Запуск и границы текущего этапа описаны в [frontend/README.md](../frontend/README.md). Для backend пока подготовлены папки и конфигурация.
+Репозиторий объединяет frontend, backend и общий контракт API. Во frontend перенесены авторизация,
+демо-профили, кабинет с протоколами, проверкой испытаний и назначением ролей, а также 3D-робот.
+Frontend может работать на моках или обращаться к FastAPI в режиме `VITE_API_MODE=http`. Backend
+реализован: регистрация, серверные сессии, RBAC, протоколы, миграции Alembic и тесты. Полная
+инструкция запуска — в [корневом README](../README.md).
 
 ## Структура
 
@@ -47,27 +51,31 @@ backend/
 
 ## Конфигурация
 
-Frontend использует React, TypeScript и Vite. Конфиги TypeScript, ESLint, Vite и зависимости подготовлены в `frontend/`. Vite передаёт `/api` на `http://127.0.0.1:8000`. В контейнере этот префикс передаёт Nginx, сохраняя адреса из контракта.
+Frontend использует React, TypeScript и Vite. Vite передаёт `/api` на `http://127.0.0.1:8000`,
+Nginx в контейнере делает то же для production-сборки. Backend рассчитан на Python 3.13 и FastAPI,
+зависимости перечислены в `backend/requirements.txt`, тестовые — в `backend/requirements-dev.txt`.
+Точка входа — `app.main:app`, миграции применяет `backend/entrypoint.sh`.
 
-Backend рассчитан на Python 3.13 и FastAPI. Зависимости перечислены в `backend/requirements.txt`, зависимости для разработки — в `backend/requirements-dev.txt`. Docker ожидает точку входа `app.main:app`, которую добавит backend-разработчик.
-
-Compose содержит сервисы `db`, `backend` и `frontend`. PostgreSQL доступен по умолчанию. Сервисы приложения включаются профилем `app`; для полного запуска ещё нужна точка входа FastAPI. Frontend на моках запускается отдельно через Vite без Compose.
-
-Для запуска PostgreSQL задайте `POSTGRES_PASSWORD` в окружении, затем выполните из корня репозитория:
-
-```sh
-docker compose up -d db
-```
-
-Имя пользователя и базы по умолчанию — `ai_engineer`. Порт PostgreSQL привязан к `127.0.0.1:5432`, данные сохраняются в именованном томе Docker.
-
-Перед запуском приложений задайте `DATABASE_URL` и `SECRET_KEY`. Адрес БД должен указывать на сервис `db` внутри сети Compose. Полный запуск после реализации точек входа:
+Compose содержит сервисы `db`, `backend` и `frontend` и запускается без профилей. Для старта:
 
 ```sh
-docker compose --profile app up --build
+cp .env.example .env
+# замените POSTGRES_PASSWORD и SECRET_KEY
+docker compose up --build
 ```
 
-Frontend будет доступен на `http://localhost:8080`, backend — на `http://localhost:8000`. Локальные настройки передаются через окружение или собственный `.env`. Git исключает `.env` и его локальные варианты.
+Frontend будет доступен на `http://localhost:8080`, backend — на `http://localhost:8000`.
+PostgreSQL опубликован на `127.0.0.1:5433` (внутри сети контейнеров — 5432), данные сохраняются
+в именованном томе Docker. Демо-вход включается через `DEMO_AUTH_ENABLED=true`.
+
+Восстановление исходных аккаунтов и протоколов:
+
+```sh
+docker compose exec backend python -m app.seed --reset
+```
+
+Backend-тесты запускаются из каталога `backend` командой `pytest`. Локальный запуск без Docker
+описан в [корневом README](../README.md).
 
 ## Работа команды
 

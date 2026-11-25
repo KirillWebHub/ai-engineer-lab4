@@ -28,6 +28,7 @@ build/
 *.log
 *.sqlite
 *.sqlite3
+*.db
 data/
 
 # Local working notes
